@@ -1,21 +1,78 @@
-// A working gta6-01 entry (Node 22, standard library only): the game is this directory's
-// game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
-// modules, no library and no network request), and the program hands it in. It copies game/ and
-// screenshots/ from beside this file to /output and writes /output/dossier.json, the summary the
-// judge reads, with the vendored make.fun library. Only the plumbing, not an open world: Block
-// Dodger, a plain 2D canvas game where a paddle dodges falling blocks and catches coins, with a
-// title screen, score, lives and levels, game over and restart, flat colours and no sound. Build
-// your own open-world crime game in its place (three.js or any library you vendor under game/),
-// put your 3 or 4 PNG or JPEG screenshots in screenshots/ (the first by name is the cover) and run it.
-//
-// Serve it locally with `node serve.ts`, then open http://localhost:8080.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// Entrypoint for Solara Bay: Heatline (gta6-01, Node 22 standard library only).
+// Copies game/ and screenshots/ to MAKEFUN_OUTPUT_DIR (or /output), runs local gate checks
+// (file counts, size caps, offline references, screenshot bounds, dossier size), and writes
+// deterministic canonical dossier.json via vendor/makefun-game.ts.
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildDossier } from './vendor/makefun-game.ts';
+import { buildDossier, htmlFacts, importOrder, isRelativeRef, readGameTree, sourceImports } from './vendor/makefun-game.ts';
+
+const CAPS = {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  game_max_files: 993,
+  game_max_bytes: 50331648,
+  game_path_max_bytes: 1000,
+};
+const DOSSIER_GATE_MAX_BYTES = 1572864;
+
+function isOfflineSafeRef(ref: string): boolean {
+  if (ref.startsWith('data:')) return true;
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(ref) || ref.startsWith('//')) return false;
+  return isRelativeRef(ref) || ref.startsWith('/');
+}
+
+function validateOutputGate(outDir: string, dossierBytes: Uint8Array): void {
+  if (dossierBytes.length > DOSSIER_GATE_MAX_BYTES) {
+    throw new Error(`Gate failed: dossier.json is ${dossierBytes.length} bytes (max ${DOSSIER_GATE_MAX_BYTES})`);
+  }
+
+  const gameDir = join(outDir, 'game');
+  const tree = readGameTree(gameDir, CAPS);
+  const indexHtml = readFileSync(join(gameDir, 'index.html'), 'utf8');
+  const facts = htmlFacts(indexHtml);
+
+  for (const s of facts.scripts) {
+    if (s.src !== null && !isOfflineSafeRef(s.src)) {
+      throw new Error(`Gate failed: external script reference "${s.src}" in index.html`);
+    }
+  }
+  for (const l of facts.links) {
+    if (!isOfflineSafeRef(l.href)) {
+      throw new Error(`Gate failed: external link reference "${l.href}" in index.html`);
+    }
+  }
+  for (const r of facts.resources) {
+    if (!isOfflineSafeRef(r.src)) {
+      throw new Error(`Gate failed: external media reference "${r.src}" in index.html`);
+    }
+  }
+
+  const sources = tree.files
+    .filter((f) => f.cls === 'source')
+    .map((f) => ({ path: f.path, bytes: new Uint8Array(readFileSync(join(gameDir, f.path))) }));
+  const reachable = importOrder(sources, facts);
+  for (const modPath of reachable) {
+    const code = readFileSync(join(gameDir, modPath), 'utf8');
+    for (const spec of sourceImports(code)) {
+      if (!isOfflineSafeRef(spec)) {
+        throw new Error(`Gate failed: external module import "${spec}" in game/${modPath}`);
+      }
+    }
+  }
+
+  const shotFiles = readdirSync(join(outDir, 'screenshots')).filter((n) => !n.startsWith('.'));
+  if (shotFiles.length < 3 || shotFiles.length > 4) {
+    throw new Error(`Gate failed: screenshots/ requires 3 to 4 images, found ${shotFiles.length}`);
+  }
+  for (const name of shotFiles) {
+    const sz = statSync(join(outDir, 'screenshots', name)).size;
+    if (sz > CAPS.screenshots.max_bytes) {
+      throw new Error(`Gate failed: screenshots/${name} is ${sz} bytes (max ${CAPS.screenshots.max_bytes})`);
+    }
+  }
+}
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
@@ -23,19 +80,11 @@ const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+if (existsSync(join(here, 'screenshots'))) {
+  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+}
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game
-// files, in all, or a path under game/ over 1000 bytes: game/ counts beside /output's own 1000-entry cap, its
-// screenshots/ and dossier.json).
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
-    text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
-    game_max_files: 993,
-    game_max_bytes: 50331648,
-    game_path_max_bytes: 1000,
-  }),
-);
+const dossierBytes = buildDossier(out, CAPS);
+validateOutputGate(out, dossierBytes);
+writeFileSync(join(out, 'dossier.json'), dossierBytes);
+

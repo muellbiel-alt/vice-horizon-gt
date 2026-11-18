@@ -1,61 +1,254 @@
-// Every tuning number and colour in one place. The playfield is a fixed 1280x720 logical area;
-// the renderer scales it to the window, so no rule below depends on the screen size.
+// Shared game constants, color system, vehicle classes, weapon arsenal, and district specs.
+// Every metric uses world pixels (1 tile ~= 16px, road width = 124px, sidewalk = 26px).
 
-export const FIELD = { width: 1280, height: 720, groundY: 664 };
+export const VIEW = {
+  width: 1280,
+  height: 720,
+};
 
-/** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
+export const WORLD = {
+  width: 3600,
+  height: 2600,
+  beachWidth: 270,
+  waterWidth: 165,
+  blockSize: 380,
+  roadWidth: 124,
+  sidewalkWidth: 26,
+};
+
 export const STEP = 1 / 60;
+export const SAVE_KEY = 'solara_bay_heatline_save_v1';
+export const UI_FONT = '"Bahnschrift", "DIN Alternate", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif';
+export const MONO_FONT = '"JetBrains Mono", "SF Mono", "Consolas", monospace';
 
-export const PLAYER = {
-  width: 72,
-  height: 24,
-  speed: 560,
-  invulnerable: 1.5,
+// Sun-soaked coastal sunset + neon skyline palette (strictly zero purple/violet slop).
+export const COLORS = {
+  backdrop: '#0b111c',
+  oceanDeep: '#0c526b',
+  oceanMid: '#157d99',
+  oceanFoam: '#9be7f0',
+  sandLight: '#ebd3a7',
+  sandWarm: '#d7b57c',
+  asphalt: '#1c2330',
+  asphaltEdge: '#273142',
+  laneLine: '#e8b954',
+  crosswalk: '#d8dee8',
+  sidewalk: '#b5aa99',
+  sidewalkCurb: '#887f72',
+  grassPark: '#2f6a4f',
+  industrialGround: '#2e333c',
+  dockConcrete: '#6b727d',
+  sunGlow: 'rgba(255, 168, 76, 0.16)',
+  shadow: 'rgba(6, 10, 18, 0.42)',
+  hudPanel: 'rgba(11, 17, 28, 0.84)',
+  hudBorder: 'rgba(244, 198, 120, 0.34)',
+  hudAccent: '#f7a531',
+  hudAmber: '#ffd166',
+  hudTeal: '#28c7b7',
+  hudDanger: '#f04b4c',
+  hudPoliceBlue: '#2c8cff',
+  hudText: '#f4f6fa',
+  hudMuted: '#9aa8bd',
+  hudArmor: '#3fa9f5',
+  hudHp: '#37c978',
 };
 
-export const LIVES = 3;
+export const DISTRICTS = [
+  { id: 'palm', name: 'Palm Boulevard', x: 0, y: 0, w: 1260, h: 2600, accent: '#28c7b7' },
+  { id: 'downtown', name: 'Downtown Neon', x: 1260, y: 0, w: 1180, h: 1420, accent: '#f7a531' },
+  { id: 'industrial', name: 'Industrial Yard', x: 2440, y: 0, w: 1160, h: 1420, accent: '#e76f51' },
+  { id: 'harbor', name: 'Harbor Docks', x: 1260, y: 1420, w: 2340, h: 1180, accent: '#3fa9f5' },
+];
 
-export const BLOCK = {
-  minWidth: 40,
-  maxWidth: 110,
-  height: 36,
-  speed: 240,
-  speedPerLevel: 30,
-  speedJitter: 90,
-  interval: 0.55,
-  intervalScale: 0.88,
-  minInterval: 0.14,
-  dodgePoints: 1,
+export const VEHICLE_CLASSES = {
+  muscle: {
+    id: 'muscle',
+    name: 'Solara V8',
+    category: 'Muscle Car',
+    length: 76,
+    width: 36,
+    maxSpeed: 540,
+    reverseSpeed: 190,
+    accel: 460,
+    brake: 660,
+    turnRate: 3.15,
+    grip: 7.4,
+    driftGrip: 2.35,
+    maxHp: 170,
+    mass: 1.25,
+    colors: ['#d94136', '#e07a22', '#268a80', '#d6a438', '#e6ebf2'],
+    stripe: true,
+    siren: false,
+  },
+  coupe: {
+    id: 'coupe',
+    name: 'Kestrel GT',
+    category: 'Sport Coupe',
+    length: 72,
+    width: 34,
+    maxSpeed: 625,
+    reverseSpeed: 210,
+    accel: 540,
+    brake: 720,
+    turnRate: 3.55,
+    grip: 8.6,
+    driftGrip: 2.75,
+    maxHp: 135,
+    mass: 1.0,
+    colors: ['#f0a326', '#21a0a0', '#f2f4f7', '#d94d3b', '#3874cb'],
+    stripe: true,
+    siren: false,
+  },
+  van: {
+    id: 'van',
+    name: 'Atlas Hauler',
+    category: 'Cargo Van',
+    length: 88,
+    width: 42,
+    maxSpeed: 390,
+    reverseSpeed: 155,
+    accel: 320,
+    brake: 520,
+    turnRate: 2.45,
+    grip: 6.4,
+    driftGrip: 3.1,
+    maxHp: 250,
+    mass: 1.9,
+    colors: ['#ced4da', '#4a6278', '#c88d42', '#52685b'],
+    stripe: false,
+    siren: false,
+  },
+  police: {
+    id: 'police',
+    name: 'Meridian Interceptor',
+    category: 'Police Cruiser',
+    length: 76,
+    width: 36,
+    maxSpeed: 590,
+    reverseSpeed: 220,
+    accel: 510,
+    brake: 730,
+    turnRate: 3.35,
+    grip: 8.4,
+    driftGrip: 2.6,
+    maxHp: 185,
+    mass: 1.35,
+    colors: ['#161c26'],
+    stripe: false,
+    siren: true,
+  },
+  swat: {
+    id: 'swat',
+    name: 'Bastion Enforcer',
+    category: 'SWAT Armored',
+    length: 94,
+    width: 46,
+    maxSpeed: 455,
+    reverseSpeed: 170,
+    accel: 360,
+    brake: 590,
+    turnRate: 2.4,
+    grip: 7.2,
+    driftGrip: 3.4,
+    maxHp: 380,
+    mass: 2.5,
+    colors: ['#1b232e'],
+    stripe: false,
+    siren: true,
+  },
 };
 
-export const COIN = {
-  size: 24,
-  speed: 190,
-  speedPerLevel: 14,
-  interval: 1.4,
-  intervalJitter: 0.8,
-  points: 10,
+export const WEAPONS = [
+  {
+    id: 'pistol',
+    slot: 1,
+    name: 'Kora 9mm',
+    short: '9MM',
+    damage: 28,
+    fireRate: 0.23,
+    magSize: 15,
+    reloadTime: 1.05,
+    pellets: 1,
+    spread: 0.035,
+    speed: 1220,
+    range: 560,
+    auto: false,
+    cost: 0,
+    ammoCost: 40,
+    color: '#ffd166',
+  },
+  {
+    id: 'smg',
+    slot: 2,
+    name: 'Viper-S SMG',
+    short: 'SMG',
+    damage: 17,
+    fireRate: 0.085,
+    magSize: 32,
+    reloadTime: 1.3,
+    pellets: 1,
+    spread: 0.095,
+    speed: 1180,
+    range: 490,
+    auto: true,
+    cost: 650,
+    ammoCost: 90,
+    color: '#ff9f43',
+  },
+  {
+    id: 'shotgun',
+    slot: 3,
+    name: 'Breacher 12G',
+    short: '12G',
+    damage: 19,
+    fireRate: 0.62,
+    magSize: 8,
+    reloadTime: 1.55,
+    pellets: 6,
+    spread: 0.22,
+    speed: 1080,
+    range: 330,
+    auto: false,
+    cost: 1100,
+    ammoCost: 110,
+    color: '#ff6b4a',
+  },
+  {
+    id: 'carbine',
+    slot: 4,
+    name: 'Apex Carbine',
+    short: 'AR-4',
+    damage: 34,
+    fireRate: 0.125,
+    magSize: 28,
+    reloadTime: 1.45,
+    pellets: 1,
+    spread: 0.04,
+    speed: 1450,
+    range: 680,
+    auto: true,
+    cost: 1900,
+    ammoCost: 140,
+    color: '#4de1ff',
+  },
+];
+
+export const PLAYER_SPEC = {
+  radius: 13,
+  walkSpeed: 195,
+  sprintSpeed: 295,
+  dodgeSpeed: 470,
+  dodgeDuration: 0.22,
+  dodgeCooldown: 0.9,
+  maxHp: 100,
+  maxArmor: 100,
+  startCash: 450,
 };
 
-/** Seconds of play per level, and the last level: speeds and spawn rates stop growing there. */
-export const LEVEL = { seconds: 12, max: 12 };
-
-/** How many falling things can exist at once; the pool is allocated once, at boot. */
-export const POOL_SIZE = 64;
-
-export const PALETTE = {
-  backdrop: '#11141b',
-  sky: '#1b1f2a',
-  ground: '#2a3040',
-  player: '#4fc3f7',
-  block: '#e5534b',
-  coin: '#f2c94c',
-  panel: '#252b38',
-  text: '#eef1f5',
-  muted: '#8b93a3',
-};
-
-export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
-
-/** Where the best score is kept between visits (this browser only). */
-export const BEST_KEY = 'block-dodger.best';
+export const SHOP_UPGRADES = [
+  { id: 'armor_vest', name: 'Kevlar Vest (+100 Armor)', cost: 350, kind: 'armor' },
+  { id: 'medkit', name: 'Trauma Kit (Full HP)', cost: 200, kind: 'heal' },
+  { id: 'turbo_tune', name: 'Street Turbo (+15% Speed)', cost: 900, kind: 'turbo' },
+  { id: 'chassis_plate', name: 'Reinforced Chassis (+35% Car HP)', cost: 1200, kind: 'chassis' },
+  { id: 'hollow_point', name: 'Match Ammo (+20% Damage)', cost: 1500, kind: 'damage' },
+];
