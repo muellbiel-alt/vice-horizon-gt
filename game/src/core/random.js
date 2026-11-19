@@ -1,5 +1,4 @@
-// Deterministic seeded PRNG (Mulberry32) and spatial hash helpers.
-// Used across city generation, traffic, police spawns, and ?shot= captures.
+// Deterministic seeded PRNG (Mulberry32) and math helpers for reproducible worlds and captures.
 
 export function createRandom(seed) {
   let state = (seed | 0) || 1;
